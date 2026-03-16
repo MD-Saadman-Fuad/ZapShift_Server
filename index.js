@@ -6,12 +6,39 @@ const port = process.env.PORT || 3000;
 const { MongoClient, ServerApiVersion, ObjectId } = require('mongodb');
 const stripe = require('stripe')(process.env.STRIPE_SECRET);
 const crypto = require("crypto");
+const path = require('path');
+const { existsSync, readFileSync } = require('fs');
 
 
 const admin = require("firebase-admin");
 
-const serviceAccount = require("./zap-shift-firebase-adminsdk.json");
-const { stat } = require('fs');
+function loadFirebaseServiceAccount() {
+    if (process.env.FB_SERVICE_KEY) {
+        try {
+            const decoded = Buffer.from(process.env.FB_SERVICE_KEY, 'base64').toString('utf8');
+            return JSON.parse(decoded);
+        } catch (error) {
+            throw new Error('Invalid FB_SERVICE_KEY: expected base64-encoded Firebase service account JSON.');
+        }
+    }
+
+    if (process.env.FIREBASE_SERVICE_ACCOUNT_JSON) {
+        try {
+            return JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT_JSON);
+        } catch (error) {
+            throw new Error('Invalid FIREBASE_SERVICE_ACCOUNT_JSON: expected valid JSON.');
+        }
+    }
+
+    const localKeyPath = path.join(__dirname, 'zap-shift-firebase-adminsdk.json');
+    if (existsSync(localKeyPath)) {
+        return JSON.parse(readFileSync(localKeyPath, 'utf8'));
+    }
+
+    throw new Error('Missing Firebase Admin credentials. Set FB_SERVICE_KEY or FIREBASE_SERVICE_ACCOUNT_JSON.');
+}
+
+const serviceAccount = loadFirebaseServiceAccount();
 
 admin.initializeApp({
     credential: admin.credential.cert(serviceAccount)
@@ -535,8 +562,8 @@ async function run() {
 
 
         // Send a ping to confirm a successful connection
-        await client.db("admin").command({ ping: 1 });
-        console.log("Pinged your deployment. You successfully connected to MongoDB!");
+        // await client.db("admin").command({ ping: 1 });
+        // console.log("Pinged your deployment. You successfully connected to MongoDB!");
     } finally {
         // Ensures that the client will close when you finish/error
         // await client.close();
