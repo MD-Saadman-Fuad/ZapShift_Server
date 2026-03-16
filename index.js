@@ -56,7 +56,11 @@ function generateTrackingId() {
 
 // Middleware
 app.use(express.json());
-app.use(cors());
+// app.use(cors());
+app.use(cors({
+    origin: process.env.ALLOWED_ORIGIN || 'https://zap-shift-web.vercel.app',
+    credentials: true
+}));
 
 const verifyFBToken = async (req, res, next) => {
     // console.log('headers', req.headers.authorization)
@@ -463,8 +467,8 @@ async function run() {
                     parcelName: paymentInfo.parcelName,
                     trackingId: paymentInfo.trackingId,
                 },
-                success_url: `${process.env.SITE_DOMOAIN}/dashboard/payment-success?session_id={CHECKOUT_SESSION_ID}`,
-                cancel_url: `${process.env.SITE_DOMOAIN}/dashboard/payment-cancelled`,
+                success_url: `${process.env.SITE_DOMAIN}/dashboard/payment-success?session_id={CHECKOUT_SESSION_ID}`,
+                cancel_url: `${process.env.SITE_DOMAIN}/dashboard/payment-cancelled`,
             });
 
             // res.redirect(303, session.url);
