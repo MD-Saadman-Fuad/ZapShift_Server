@@ -1,38 +1,24 @@
 # Zap Shift Server
 
-A production-ready Node.js/Express backend for the **Zap Shift** parcel delivery platform. This service handles user management, rider onboarding, parcel lifecycle operations, payment processing with Stripe, and shipment tracking logs.
+Backend API for the Zap Shift parcel delivery platform. It handles user roles, rider workflows, parcel lifecycle updates, Stripe payments, Firebase token verification, and shipment tracking logs.
 
-## Table of Contents
+## Highlights
 
-- [Features](#features)
-- [Tech Stack](#tech-stack)
-- [Project Structure](#project-structure)
-- [Environment Variables](#environment-variables)
-- [Getting Started](#getting-started)
-- [Authentication & Authorization](#authentication--authorization)
-- [API Reference](#api-reference)
-- [Parcel Tracking Flow](#parcel-tracking-flow)
-- [Deployment Notes](#deployment-notes)
-- [License](#license)
-
-## Features
-
-- User creation and role management (`user`, `rider`, `admin`)
-- Rider application and approval workflow
-- Parcel creation, assignment, and delivery status updates
+- REST API built with Express and MongoDB
+- Firebase Admin authentication with role-based authorization
 - Stripe Checkout integration for parcel payments
-- Firebase Admin token verification for protected routes
-- Tracking log history per parcel with generated tracking IDs
-- Analytics endpoints for delivery status and rider delivery counts
+- Parcel tracking timeline with status log history
+- Rider performance and delivery analytics endpoints
+- Production-ready deployment on Render or Vercel
 
 ## Tech Stack
 
-- **Runtime:** Node.js
-- **Framework:** Express.js
-- **Database:** MongoDB (official Node driver)
-- **Authentication:** Firebase Admin SDK (ID token verification)
-- **Payments:** Stripe Checkout API
-- **Utilities:** `dotenv`, `cors`, `crypto`
+- Node.js
+- Express.js
+- MongoDB Node Driver
+- Firebase Admin SDK
+- Stripe API
+- dotenv, cors, crypto
 
 ## Project Structure
 
@@ -40,152 +26,166 @@ A production-ready Node.js/Express backend for the **Zap Shift** parcel delivery
 zap-shift-server/
 ├── index.js
 ├── package.json
-├── package-lock.json
-├── .env
-└── zap-shift-firebase-adminsdk.json
+├── vercel.json
+├── .env (local only)
+└── zap-shift-firebase-adminsdk.json (optional local fallback)
 ```
 
 ## Environment Variables
 
-Create a `.env` file in the project root and define:
+Create a local `.env` file with the following values:
 
-| Variable        | Required | Description                                      |
-| --------------- | -------- | ------------------------------------------------ |
-| `PORT`          | No       | Server port (defaults to `3000`)                 |
-| `URI`           | Yes      | MongoDB connection string                        |
-| `STRIPE_SECRET` | Yes      | Stripe secret key                                |
-| `SITE_DOMOAIN`  | Yes      | Frontend URL for Stripe success/cancel redirects |
+| Variable | Required | Description |
+| --- | --- | --- |
+| `PORT` | No | API port (default: `3000`) |
+| `URI` | Yes | MongoDB connection string |
+| `STRIPE_SECRET` | Yes | Stripe secret key |
+| `SITE_DOMAIN` | Yes | Frontend base URL for Stripe redirects |
+| `ALLOWED_ORIGIN` | No | CORS origin allowlist entry (default: `https://zap-shift-web.vercel.app`) |
+| `FB_SERVICE_KEY` | Yes* | Base64-encoded Firebase service account JSON |
+| `FIREBASE_SERVICE_ACCOUNT_JSON` | Yes* | Raw Firebase service account JSON string |
 
-> Note: `SITE_DOMOAIN` is intentionally spelled to match the current server code.
+`*` Provide one of `FB_SERVICE_KEY`, `FIREBASE_SERVICE_ACCOUNT_JSON`, or a local `zap-shift-firebase-adminsdk.json` file.
 
-### Firebase Admin Credentials
+### Example
 
-Place your Firebase service account file at:
-
-- `./zap-shift-firebase-adminsdk.json`
-
-Do **not** expose this file publicly.
-
-## Getting Started
-
-### 1) Install dependencies
-
-```bash
-npm install
+```env
+PORT=3000
+URI=your_mongodb_connection_string
+STRIPE_SECRET=your_stripe_secret_key
+SITE_DOMAIN=https://zap-shift-web.vercel.app
+ALLOWED_ORIGIN=https://zap-shift-web.vercel.app
+FB_SERVICE_KEY=base64_encoded_firebase_service_account_json
 ```
 
-### 2) Configure environment
+## Local Setup
 
-- Add all required `.env` variables
-- Ensure `zap-shift-firebase-adminsdk.json` exists in root
+1. Install dependencies
 
-### 3) Run the server
+	 ```bash
+	 npm install
+	 ```
 
-```bash
-node index.js
-```
+2. Configure environment variables in `.env`
+3. Run the server
 
-For development with auto-reload:
+	 ```bash
+	 node index.js
+	 ```
 
-```bash
-npx nodemon index.js
-```
+4. Development mode (auto reload)
 
-Server base URL (local):
+	 ```bash
+	 npx nodemon index.js
+	 ```
 
-```text
-http://localhost:3000
-```
+Base URL: `http://localhost:3000`
 
-## Authentication & Authorization
+## Authentication and Authorization
 
-Protected endpoints expect a Firebase ID token in the `Authorization` header:
+Protected routes use Firebase ID tokens:
 
 ```http
 Authorization: Bearer <FIREBASE_ID_TOKEN>
 ```
 
-Role controls implemented in middleware:
+Role middleware:
 
-- **Admin-only:** user role updates, rider approval updates
-- **Rider role:** available in middleware for rider-specific protection
+- `verifyFBToken`: validates Firebase token
+- `verifyAdmin`: allows admin-only actions
+- `verifyRider`: available for rider-only actions
 
-## API Reference
+## API Overview
 
 ### Health
 
-| Method | Endpoint | Description            |
-| ------ | -------- | ---------------------- |
-| `GET`  | `/`      | Service status message |
+| Method | Endpoint | Description |
+| --- | --- | --- |
+| `GET` | `/` | Health message |
 
 ### Users
 
-| Method  | Endpoint             | Description                                            |
-| ------- | -------------------- | ------------------------------------------------------ |
-| `GET`   | `/users`             | List users (supports `searchText`)                     |
-| `GET`   | `/users/:id`         | Get user by MongoDB ID                                 |
-| `GET`   | `/users/:email/role` | Get role by email                                      |
-| `POST`  | `/users`             | Create user (defaults role to `user`)                  |
-| `PATCH` | `/users/:id/role`    | Update user role (**Admin + Firebase token required**) |
+| Method | Endpoint | Description |
+| --- | --- | --- |
+| `GET` | `/users` | List users, optional search with `searchText` |
+| `GET` | `/users/:id` | Get user by MongoDB id |
+| `GET` | `/users/:email/role` | Get role by email |
+| `POST` | `/users` | Create user (returns `409` if email exists) |
+| `PATCH` | `/users/:id/role` | Update role (Firebase token + admin required) |
 
 ### Riders
 
-| Method  | Endpoint                   | Description                                                |
-| ------- | -------------------------- | ---------------------------------------------------------- |
-| `POST`  | `/riders`                  | Submit rider application (`status: pending`)               |
-| `PATCH` | `/riders/:id`              | Approve/reject rider (**Admin + Firebase token required**) |
-| `GET`   | `/riders`                  | List riders (supports `status`, `district`, `workStatus`)  |
-| `GET`   | `/riders/delivery-per-day` | Rider delivery count grouped by day (`email` query)        |
+| Method | Endpoint | Description |
+| --- | --- | --- |
+| `POST` | `/riders` | Submit rider application |
+| `PATCH` | `/riders/:id` | Approve/reject rider (Firebase token + admin required) |
+| `GET` | `/riders` | Filter by `status`, `district`, `workStatus` |
+| `GET` | `/riders/delivery-per-day` | Rider delivery stats by day (`email` query) |
 
 ### Parcels
 
-| Method  | Endpoint                         | Description                                                |
-| ------- | -------------------------------- | ---------------------------------------------------------- |
-| `GET`   | `/parcels`                       | List parcels (supports `email`, `deliveryStatus`)          |
-| `GET`   | `/parcels/rider`                 | Rider-focused parcel list (`riderEmail`, `deliveryStatus`) |
-| `GET`   | `/parcels/:id`                   | Get parcel by ID                                           |
-| `GET`   | `/parcels/delivery-status/stats` | Aggregate parcel count by delivery status                  |
-| `POST`  | `/parcels`                       | Create parcel and generate `trackingId`                    |
-| `PATCH` | `/parcels/:id`                   | Assign rider to parcel                                     |
-| `PATCH` | `/parcels/:id/status`            | Update parcel delivery status                              |
+| Method | Endpoint | Description |
+| --- | --- | --- |
+| `GET` | `/parcels` | Parcel list, filter by `email`, `deliveryStatus` |
+| `GET` | `/parcels/rider` | Rider parcel list by `riderEmail` and `deliveryStatus` |
+| `GET` | `/parcels/:id` | Get parcel by id |
+| `GET` | `/parcels/delivery-status/stats` | Aggregate delivery status counts |
+| `POST` | `/parcels` | Create parcel and auto-generate `trackingId` |
+| `PATCH` | `/parcels/:id` | Assign rider, set rider work status |
+| `PATCH` | `/parcels/:id/status` | Update parcel status and tracking log |
 
 ### Payments
 
-| Method  | Endpoint                   | Description                                                |
-| ------- | -------------------------- | ---------------------------------------------------------- |
-| `POST`  | `/create-checkout-session` | Create Stripe Checkout session                             |
-| `PATCH` | `/payment-success`         | Confirm successful payment using `session_id` query        |
-| `GET`   | `/payments`                | Get payment history by email (**Firebase token required**) |
+| Method | Endpoint | Description |
+| --- | --- | --- |
+| `POST` | `/create-checkout-session` | Create Stripe Checkout session |
+| `PATCH` | `/payment-success?session_id=...` | Verify successful Stripe payment |
+| `GET` | `/payments?email=...` | Payment history for authenticated user |
 
 ### Tracking
 
-| Method | Endpoint                      | Description                             |
-| ------ | ----------------------------- | --------------------------------------- |
-| `GET`  | `/trackings/:trackingId/logs` | Get tracking timeline/logs for a parcel |
+| Method | Endpoint | Description |
+| --- | --- | --- |
+| `GET` | `/trackings/:trackingId/logs` | Tracking timeline for a parcel |
 
-## Parcel Tracking Flow
+## Payment Flow
 
-At key lifecycle events, tracking entries are inserted/upserted into the `trackings` collection. Typical sequence:
+1. Frontend calls `POST /create-checkout-session`
+2. User completes Stripe Checkout
+3. Frontend calls `PATCH /payment-success?session_id=...`
+4. Backend updates parcel payment status and stores payment record
+5. Backend writes `parcel_paid` to tracking logs
 
-1. `parcel_created`
-2. `parcel_paid`
-3. `driver-assigned`
-4. `parcel_delivered`
+## Deployment
 
-Each tracking document stores:
+### Render
 
-- `trackingId`
-- `status`
-- `details`
-- `createdAt`
+- Connect the repository and enable auto-deploy from `main`
+- Add all required environment variables in Render dashboard
+- Redeploy after any environment variable changes
 
-## Deployment Notes
+### Vercel (Serverless)
 
-- Set all required environment variables in your hosting platform
-- Keep Firebase service credentials secure (never commit real credentials)
-- Configure CORS policy appropriately for production frontend domains
-- Ensure MongoDB network access and user permissions are configured
+- `vercel.json` is configured to route all methods to `index.js`
+- Ensure the same environment variables are configured in Vercel project settings
+
+## Troubleshooting
+
+- `Error: Neither apiKey nor config.authenticator provided`
+	- `STRIPE_SECRET` is missing in the hosting environment
+- `Invalid FB_SERVICE_KEY`
+	- Firebase credential value is not valid base64 JSON
+- `POST /users 409`
+	- User already exists by email (expected duplicate protection)
+- Stripe success redirect 404 on frontend
+	- Ensure `SITE_DOMAIN` matches your live frontend URL and route structure
+
+## Security Notes
+
+- Never commit real `.env` values or Firebase private keys
+- Rotate credentials immediately if exposed
+- Restrict MongoDB IP/network access and database user permissions
 
 ## License
 
-This project is currently licensed under **ISC** (as defined in `package.json`).
+ISC
